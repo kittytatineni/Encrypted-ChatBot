@@ -1,0 +1,14 @@
+{
+    "alice": {
+        "salt": "aeab869f3f387349b7d46ebb75b6d6cf",
+        "password": "0694b3ce4b7be6bf77b81caeeb45215ac3bacfc3eb60c5e43a7bb3f7d42b79a7"
+    },
+    "bob": {
+        "salt": "68feba7a37a56d2612b4295be648a5e6",
+        "password": "124d6a2a594a52f7093aa8c33e3c9a47acb72ddfa63349d5928ca1592cd5ae96"
+    },
+    "robert": {
+        "salt": "a12151f605565399a8b972ce4eeaa470",
+        "password": "96e87654bed861b7ab7c4feceb5a4304a7cb12d042e718362d15cf1dcd7083a7"
+    }
+}

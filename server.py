@@ -1,7 +1,7 @@
 import socket
 import threading
 import struct
-
+from auth import authenticate, register, load_users
 from cryptography.hazmat.primitives import serialization
 from crypto import *
 
@@ -11,6 +11,8 @@ PORT = 5555
 # One shared Fernet key for all chat clients
 fernet_key = generate_key()
 cipher = create_cipher(fernet_key)
+
+print("[RSA] Secure session established.\n")
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -53,6 +55,8 @@ def broadcast(message):
     with clients_lock:
         current_clients = clients.copy()
 
+    print(f"[BROADCAST] Forwarding encrypted message to {len(current_clients)} client(s).")
+
     for client in current_clients:
         try:
             send_frame(client, message)
@@ -65,6 +69,11 @@ def handle(client):
         try:
             # Client messages are encrypted using the shared Fernet key.
             encrypted_message = recv_frame(client)
+            
+            print("\n===== SERVER RECEIVED =====")
+            print(encrypted_message)
+            print("===========================\n")
+
             broadcast(encrypted_message)
 
         except Exception:
@@ -82,12 +91,21 @@ def handle(client):
 
     client.close()
 
-    print(f"{username} disconnected.")
+    print(f"[SERVER] {username} disconnected.")
 
     leave_message = encrypt(
         cipher,
         f"SERVER: {username} left the chat."
     )
+
+    encrypted_message = recv_frame(client)
+    print("[RSA] Received encrypted Fernet session key.")
+
+    print("\n----- ENCRYPTED MESSAGE -----")
+    print(encrypted_message)
+    print("-----------------------------\n")
+
+    broadcast(encrypted_message)
 
     broadcast(leave_message)
 
@@ -112,14 +130,90 @@ def receive():
                 client_public_key,
                 fernet_key
             )
-
+            print("[AUTH] Sending encrypted credentials...")
             send_frame(client, encrypted_fernet_key)
 
-            # Ask for username
+            print(f"[RSA] Sent encrypted Fernet session key to {address}")
+
+            # Ask for credentials
             send_frame(client, b"USERNAME")
-            username = recv_frame(client).decode()
+
+            encrypted_credentials = recv_frame(client)
+
+            credentials = decrypt(
+                cipher,
+                encrypted_credentials
+            )
+
+            action, username, password = credentials.split(":", 2)
+            print(f"[AUTH] Received {action} request for user '{username}'")
+
+            users = load_users()
+
+            # ------------------------
+            # REGISTER
+            # ------------------------
+
+            if action == "REGISTER":
+
+                if username in users:
+                    print(f"[AUTH] Registration failed. Username '{username}' already exists.")
+                    send_frame(client, b"USERNAME_EXISTS")
+                    client.close()
+                    continue
+
+                register(username, password)
+
+                print(f"{username} registered.")
+                print(f"[AUTH] User '{username}' registered successfully.")
+
+
+            # ------------------------
+            # LOGIN
+            # ------------------------
+
+            elif action == "LOGIN":
+
+                if username not in users:
+                    print(f"[AUTH] Login attempt for unknown user '{username}'")
+                    send_frame(client, b"UNKNOWN_USER")
+                    client.close()
+                    continue
+
+                if not authenticate(username, password):
+                    print(f"[AUTH] Authentication failed for '{username}'")
+                    send_frame(client, b"WRONG_PASSWORD")
+                    client.close()
+                    continue
+
+            # ------------------------
+            # INVALID REQUEST
+            # ------------------------
+
+            else:
+                send_frame(client, b"INVALID_REQUEST")
+                client.close()
+                continue
+
+            print(f"[AUTH] {username} authenticated successfully.")
+            
+            # Authentication successful
+            send_frame(client, b"AUTH_OK")
 
             with clients_lock:
+
+                if username in usernames:
+
+                    print(f"[AUTH] Duplicate login attempt for '{username}'")
+
+                    send_frame(
+                        client,
+                        b"ALREADY_LOGGED_IN"
+                    )
+
+                    client.close()
+                    continue
+
                 usernames.append(username)
                 clients.append(client)
 
